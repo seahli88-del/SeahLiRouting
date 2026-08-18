@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamLine MES Dashboard</title>
+<style>
+  :root{
+    --bg:#0F172A;
+    --station-bg:#1E293B;
+    --card-bg:#334155;
+    --card-bg-2:#3f4d63;
+    --text:#E2E8F0;
+    --muted:#94A3B8;
+    --border:#475569;
+    --accent:#38BDF8;
+    --blue:#3B82F6;
+    --yellow:#EAB308;
+    --green:#22C55E;
+    --red:#EF4444;
+    --orange:#F97316;
+    --gray:#6B7280;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',Roboto,Arial,sans-serif;
+    overflow-x:hidden;
+  }
+  #app{display:flex;flex-direction:column;min-height:100vh;padding:14px 18px 24px;gap:14px;}
+
+  /* ---------- HEADER ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    background:linear-gradient(90deg,#111c31,#1c2c4a);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px 22px;
+  }
+  .topbar h1{
+    margin:0;font-size:22px;letter-spacing:.5px;
+    background:linear-gradient(90deg,#38BDF8,#818CF8);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .topbar .sub{color:var(--muted);font-size:12px;margin-top:2px;}
+  .status-cluster{display:flex;align-items:center;gap:18px;}
+  .run-pill{
+    display:flex;align-items:center;gap:8px;
+    padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;
+    background:#1e293b;border:1px solid var(--border);
+  }
+  .run-dot{width:9px;height:9px;border-radius:50%;background:var(--gray);}
+  .run-pill.running .run-dot{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.2s infinite;}
+  .run-pill.paused .run-dot{background:var(--yellow);box-shadow:0 0 8px var(--yellow);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  #clock{font-variant-numeric:tabular-nums;color:var(--accent);font-size:14px;font-weight:600;}
+
+  /* ---------- KPI ROW ---------- */
+  .kpi-row{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px;
+  }
+  .kpi-card{
+    background:var(--card-bg);border:1px solid var(--border);border-radius:10px;
+    padding:10px 14px;display:flex;flex-direction:column;gap:4px;
+    position:relative;overflow:hidden;
+  }
+  .kpi-card::before{
+    content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--accent);
+  }
+  .kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+  .kpi-value{font-size:24px;font-weight:700;line-height:1.1;}
+  .kpi-unit{font-size:11px;color:var(--muted);}
+
+  /* ---------- MAIN GRID ---------- */
+  .main-grid{
+    display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;flex:1;
+  }
+  @media (max-width:1100px){ .main-grid{grid-template-columns:minmax(0,1fr);} }
+
+  .floor-panel{
+    background:var(--station-bg);border:1px solid var(--border);border-radius:12px;
+    padding:14px;display:flex;flex-direction:column;gap:10px;min-height:520px;
+    min-width:0;
+  }
+  .floor-toolbar{display:flex;justify-content:space-between;align-items:center;}
+  .floor-toolbar h2{margin:0;font-size:15px;color:var(--muted);font-weight:600;letter-spacing:.4px;}
+
+  .factory-floor{
+    position:relative;flex:1;min-height:340px;min-width:0;width:100%;
+    border-radius:10px;border:1px dashed #2c3b57;
+    overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-gutter:stable;
+    scrollbar-width:auto;
+    scrollbar-color:var(--accent) #0f172a;
+  }
+  /* Prominent, always-visible-when-needed horizontal scrollbar for the factory floor */
+  .factory-floor::-webkit-scrollbar{height:14px;}
+  .factory-floor::-webkit-scrollbar-track{background:#0f172a;border-radius:8px;border:1px solid #1e293b;}
+  .factory-floor::-webkit-scrollbar-thumb{
+    background:linear-gradient(90deg,#38bdf8,#818cf8);
+    border-radius:8px;border:2px solid #0f172a;
+  }
+  .factory-floor::-webkit-scrollbar-thumb:hover{background:linear-gradient(90deg,#60cdff,#93a4ff);}
+  .floor-inner{
+    position:relative;
+    min-width:1300px;width:100%;height:100%;min-height:340px;
+    background:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size:26px 26px;
+  }
+  .flow-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  .scroll-hint{
+    display:none;color:var(--accent);font-size:11px;font-weight:700;
+    animation:hintBlink 1.6s infinite;
+  }
+  @keyframes hintBlink{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .floor-panel.has-overflow .scroll-hint{display:inline;}
+
+  .station-node{
+    position:absolute;transform:translate(-50%,-50%);
+    width:158px;
+    background:linear-gradient(160deg,var(--card-bg),#28374d);
+    border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 4px 10px rgba(0,0,0,.35);
+    padding:8px 10px;font-size:11px;
+    transition:box-shadow .2s ease;
+    cursor:grab;touch-action:none;user-select:none;
+  }
+  .station-node.dragging{
+    cursor:grabbing;z-index:50;opacity:.96;
+    box-shadow:0 12px 28px rgba(0,0,0,.6),0 0 0 2px var(--accent);
+  }
+  .station-node.type-Inspection{border-color:#facc15aa;}
+  .station-node.type-Repair{border-color:#fb923caa;}
+  .station-node.type-Output{border-color:#22c55eaa;}
+  .station-node.type-Source{border-color:#38bdf8aa;}
+  .station-node .st-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .station-node .st-name{font-weight:700;font-size:13px;}
+  .station-node .st-type{
+    font-size:9px;padding:1px 6px;border-radius:8px;background:#0f172a;color:var(--muted);
+    border:1px solid var(--border);
+  }
+  .station-node .st-rows{display:flex;flex-direction:column;gap:3px;color:var(--muted);}
+  .station-node .st-rows span b{color:var(--text);}
+  .util-bar{width:100%;height:6px;border-radius:4px;background:#0f172a;overflow:hidden;margin-top:4px;border:1px solid #1e293b;}
+  .util-fill{height:100%;background:linear-gradient(90deg,#38bdf8,#22c55e);transition:width .3s ease;}
+  .queue-dots{display:flex;flex-wrap:wrap;gap:3px;min-height:12px;margin-top:4px;}
+  .queue-dots .dot{width:8px;height:8px;border-radius:50%;background:var(--blue);flex:0 0 auto;}
+  .wip-dots{display:flex;gap:4px;margin-top:2px;}
+  .wip-slot{width:14px;height:14px;border-radius:4px;background:#0f172a;border:1px solid var(--border);}
+  .wip-slot.filled{background:var(--yellow);box-shadow:0 0 6px var(--yellow);}
+
+  /* moving units */
+  .unit-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  .unit-chip{
+    position:absolute;width:14px;height:14px;border-radius:50%;
+    background:var(--blue);border:2px solid #0b1220;
+    box-shadow:0 0 6px rgba(0,0,0,.6);
+    transition:left .7s linear, top .7s linear, background-color .3s ease, transform .3s ease;
+    transform:translate(-50%,-50%);
+  }
+  .unit-chip.status-Waiting{background:var(--blue);}
+  .unit-chip.status-Processing{background:var(--yellow);}
+  .unit-chip.status-Moving{background:var(--accent);}
+  .unit-chip.status-Passed{background:var(--green);}
+  .unit-chip.status-Failed{background:var(--red);}
+  .unit-chip.status-Repairing{background:var(--orange);}
+  .unit-chip.status-Completed{background:var(--gray);}
+
+  /* ---------- SIDE PANEL ---------- */
+  .side-panel{display:flex;flex-direction:column;gap:14px;}
+  .panel-box{
+    background:var(--station-bg);border:1px solid var(--border);border-radius:12px;
+    padding:14px;display:flex;flex-direction:column;gap:10px;
+  }
+  .panel-box h2{margin:0 0 2px;font-size:14px;color:var(--muted);font-weight:600;}
+
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+  button{
+    cursor:pointer;border:1px solid var(--border);border-radius:8px;
+    background:var(--card-bg);color:var(--text);padding:8px 12px;font-size:13px;font-weight:600;
+    transition:background .15s ease, transform .1s ease;
+  }
+  button:hover{background:var(--card-bg-2);}
+  button:active{transform:scale(.96);}
+  button.primary{background:#0ea5e9;border-color:#0ea5e9;color:#03202f;}
+  button.primary:hover{background:#38bdf8;}
+  button.danger{background:#7f1d1d;border-color:#b91c1c;}
+  button.danger:hover{background:#991b1b;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  .field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);}
+  .field input, .field select{
+    background:#0f172a;border:1px solid var(--border);border-radius:6px;color:var(--text);
+    padding:6px 8px;font-size:13px;
+  }
+  .quickrates{display:flex;gap:5px;flex-wrap:wrap;}
+  .quickrates button{padding:4px 8px;font-size:11px;}
+  .quickrates button.active{background:var(--accent);color:#03202f;border-color:var(--accent);}
+
+  .station-config-list{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding-right:4px;}
+  .station-config-list::-webkit-scrollbar{width:6px;}
+  .station-config-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  .sc-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;}
+  .sc-card .sc-title{font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;}
+  .sc-card .sc-title .sc-type{font-size:10px;color:var(--muted);}
+  .sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .sc-grid label{display:flex;flex-direction:column;gap:2px;color:var(--muted);font-size:10px;}
+  .sc-grid input{background:#0f172a;border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 6px;font-size:12px;width:100%;}
+
+  /* ---------- LEGEND ---------- */
+  .legend-bar{
+    display:flex;gap:18px;flex-wrap:wrap;align-items:center;
+    background:var(--station-bg);border:1px solid var(--border);border-radius:10px;
+    padding:10px 18px;font-size:12px;color:var(--muted);
+  }
+  .legend-item{display:flex;align-items:center;gap:6px;}
+  .legend-swatch{width:12px;height:12px;border-radius:50%;}
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:4px;}
+
+  /* ---------- RESPONSIVE / MOBILE ---------- */
+  @media (max-width:900px){
+    #app{padding:10px 10px 18px;gap:10px;}
+    .topbar{flex-direction:column;align-items:flex-start;gap:8px;padding:12px 14px;}
+    .status-cluster{width:100%;justify-content:space-between;}
+    .topbar h1{font-size:18px;}
+    .floor-panel{min-height:auto;padding:10px;}
+    .kpi-row{grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;}
+    .kpi-value{font-size:19px;}
+    .kpi-card{padding:8px 10px;}
+  }
+  @media (max-width:600px){
+    .kpi-row{grid-template-columns:repeat(2,1fr);}
+    .legend-bar{gap:10px;padding:8px 12px;font-size:11px;}
+    .btn-row button{flex:1 1 calc(50% - 8px);}
+    .sc-grid{grid-template-columns:1fr 1fr;}
+    .floor-toolbar{flex-direction:column;align-items:flex-start;gap:2px;}
+  }
+  @media (max-width:400px){
+    .kpi-row{grid-template-columns:repeat(2,1fr);}
+    .topbar h1{font-size:16px;}
+    .kpi-value{font-size:17px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div>
+      <h1>StreamLine MES Production Line Monitor</h1>
+      <div class="sub">Real-time routing simulation &middot; Manufacturing Execution System</div>
+    </div>
+    <div class="status-cluster">
+      <div id="runPill" class="run-pill"><span class="run-dot"></span><span id="runLabel">Stopped</span></div>
+      <div id="clock">00:00:00</div>
+    </div>
+  </header>
+
+  <section class="kpi-row" id="kpiRow"></section>
+
+  <main class="main-grid">
+    <section class="floor-panel">
+      <div class="floor-toolbar">
+        <h2>FACTORY FLOOR &mdash; LIVE ROUTING</h2>
+        <div class="sub" style="color:var(--muted);font-size:11px;">Drag stations to rearrange &middot; repairs loop back to Inspection <span class="scroll-hint">&nbsp;&middot;&nbsp;swipe/scroll horizontally to see all stations →</span></div>
+      </div>
+      <div class="factory-floor" id="factoryFloor">
+        <div class="floor-inner" id="floorInner">
+          <svg class="flow-svg" id="flowSvg"></svg>
+          <div class="unit-layer" id="unitLayer"></div>
+          <!-- station nodes injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="panel-box">
+        <h2>CONTROL PANEL</h2>
+        <div class="btn-row">
+          <button class="primary" id="btnStart">▶ Start</button>
+          <button id="btnPause">⏸ Pause</button>
+          <button id="btnResume">⏵ Resume</button>
+          <button class="danger" id="btnReset">⟲ Reset</button>
+        </div>
+        <div class="field">
+          <label>Unit Arrival Rate (seconds between units)</label>
+          <input type="number" id="cfgArrival" min="0.5" step="0.5" value="4">
+        </div>
+        <div class="field">
+          <label>Global Processing Time Multiplier (×)</label>
+          <input type="number" id="cfgProcMult" min="0.25" step="0.25" value="1">
+        </div>
+        <div class="field">
+          <label>Inspection Fail Rate</label>
+          <div class="quickrates" id="failRateButtons"></div>
+        </div>
+        <div class="field">
+          <label>Simulation Speed</label>
+          <div class="quickrates" id="speedButtons"></div>
+        </div>
+      </div>
+
+      <div class="panel-box">
+        <h2>STATION CONFIGURATION</h2>
+        <div class="station-config-list" id="stationConfigPanel"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="legend-bar" id="legendBar"></footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. STATION & ROUTING CONFIGURATION
+   ========================================================= */
+const StationType = { SOURCE:'Source', PROCESS:'Process', INSPECTION:'Inspection', REPAIR:'Repair', OUTPUT:'Output' };
+
+// Each station: {id, name, type, processingTime(sec), capacity, queueLimit, failRate(%), pos:{x%,y%}}
+let stations = [
+  { id:'Input',      name:'Input',          type:StationType.SOURCE,     processingTime:1,  capacity:99, queueLimit:99, pos:{x:6,  y:32} },
+  { id:'SMT',        name:'SMT',            type:StationType.PROCESS,    processingTime:6,  capacity:2,  queueLimit:8,  pos:{x:23, y:32} },
+  { id:'Assembly',   name:'Assembly',       type:StationType.PROCESS,    processingTime:8,  capacity:3,  queueLimit:8,  pos:{x:40, y:32} },
+  { id:'Inspection', name:'Inspection',     type:StationType.INSPECTION, processingTime:5,  capacity:2,  queueLimit:8,  failRate:15, pos:{x:57, y:32} },
+  { id:'Repair',     name:'Repair',         type:StationType.REPAIR,     processingTime:10, capacity:1,  queueLimit:6,  pos:{x:57, y:78} },
+  { id:'Packing',    name:'Packing',        type:StationType.PROCESS,    processingTime:4,  capacity:2,  queueLimit:8,  pos:{x:76, y:32} },
+  { id:'Finished',   name:'Finished Goods', type:StationType.OUTPUT,     processingTime:0,  capacity:9999,queueLimit:9999, pos:{x:93, y:32} },
+];
+const stationMap = {};
+stations.forEach(s => stationMap[s.id] = s);
+
+// Routing definition (configurable / extendable)
+let routingConfig = {
+  Input: 'SMT',
+  SMT: 'Assembly',
+  Assembly: 'Inspection',
+  Inspection: { pass: 'Packing', fail: 'Repair' },
+  Repair: 'Inspection',
+  Packing: 'Finished'
+};
+
+/* =========================================================
+   2. RUNTIME STATE
+   ========================================================= */
+let unitSeq = 0;
+const models = ['MX-100','MX-200','ZX-Board','FF-Sensor','QC-Panel'];
+
+function makeUnit(){
+  unitSeq++;
+  return {
+    UnitID: unitSeq,
+    Model: models[Math.floor(Math.random()*models.length)],
+    SerialNumber: 'SN' + String(100000 + unitSeq),
+    StartTime: simTimeSec,
+    CurrentStation: null,
+    Status: 'Waiting',
+    Result: null,
+    repaired: false,
+    el: null
+  };
+}
+
+// per-station runtime state
+function resetStationRuntime(){
+  stations.forEach(s=>{
+    s.queue = [];       // waiting units
+    s.processing = [];  // {unit, remaining, duration}
+    s.blocked = [];     // units done processing, waiting for downstream space {unit, destId}
+    s.busyTimeAccum = 0; // for utilization calc
+  });
+}
+resetStationRuntime();
+
+let allUnits = [];       // all active (non-completed) units
+let running = false;
+let paused = false;
+let simTimeSec = 0;
+let arrivalAccum = 0;
+let tickHandle = null;
+const REAL_TICK_MS = 100;
+
+let simSpeed = 1;        // multiplier
+let procMult = 1;        // global processing time multiplier
+let arrivalIntervalSec = 4;
+
+// KPI counters
+let kpi = {
+  totalInput:0, totalOutput:0, passQty:0, failQty:0, repairCount:0
+};
+let outputTimestamps = []; // for throughput/hr calc (sim seconds)
+
+/* =========================================================
+   3. SIMULATION ENGINE
+   ========================================================= */
+function startSim(){
+  if (running && !paused) return;
+  running = true; paused = false;
+  updateRunPill();
+  if (!tickHandle){
+    tickHandle = setInterval(tick, REAL_TICK_MS);
+  }
+}
+function pauseSim(){
+  if (!running || paused) return;
+  paused = true;
+  updateRunPill();
+}
+function resumeSim(){
+  if (!running || !paused) return;
+  paused = false;
+  updateRunPill();
+}
+function resetSim(){
+  running = false; paused = false;
+  if (tickHandle){ clearInterval(tickHandle); tickHandle = null; }
+  simTimeSec = 0; arrivalAccum = 0; unitSeq = 0;
+  kpi = { totalInput:0, totalOutput:0, passQty:0, failQty:0, repairCount:0 };
+  outputTimestamps = [];
+  allUnits.forEach(u=>{ if(u.el && u.el.parentNode) u.el.parentNode.removeChild(u.el); });
+  allUnits = [];
+  unitLayer.innerHTML = ''; // clear any lingering fade-out elements from completed units
+  resetStationRuntime();
+  updateRunPill();
+  renderStationCards();
+  renderKPIs();
+  updateClock();
+}
+
+function updateRunPill(){
+  const pill = document.getElementById('runPill');
+  const label = document.getElementById('runLabel');
+  pill.classList.remove('running','paused');
+  document.getElementById('btnStart').disabled = running && !paused;
+  document.getElementById('btnPause').disabled = !running || paused;
+  document.getElementById('btnResume').disabled = !running || !paused;
+  if (!running){ label.textContent = 'Stopped'; }
+  else if (paused){ pill.classList.add('paused'); label.textContent = 'Paused'; }
+  else { pill.classList.add('running'); label.textContent = 'Running'; }
+}
+
+function tick(){
+  if (!running || paused) return;
+  const dt = (REAL_TICK_MS/1000) * simSpeed; // simulated seconds elapsed this tick
+  simTimeSec += dt;
+
+  // 1. Arrivals into Input
+  arrivalAccum += dt;
+  if (arrivalAccum >= arrivalIntervalSec){
+    arrivalAccum -= arrivalIntervalSec;
+    const inputSt = stationMap['Input'];
+    if (inputSt.queue.length + inputSt.processing.length < inputSt.queueLimit + inputSt.capacity){
+      const u = makeUnit();
+      u.CurrentStation = 'Input';
+      u.Status = 'Waiting';
+      allUnits.push(u);
+      inputSt.queue.push(u);
+      kpi.totalInput++;
+      createUnitElement(u);
+      positionUnitAtStation(u, 'Input', true);
+    }
+  }
+
+  // 2. Process each station: advance processing timers, pull from queue into capacity
+  stations.forEach(st => stationTick(st, dt));
+
+  // 3. Retry blocked units (waiting for downstream space)
+  stations.forEach(st => retryBlocked(st));
+
+  // 4. Refresh UI
+  renderStationCards();
+  renderKPIs();
+  updateClock();
+}
+
+function stationTick(st, dt){
+  // advance processing
+  for (let i = st.processing.length - 1; i >= 0; i--){
+    const entry = st.processing[i];
+    entry.remaining -= dt;
+    st.busyTimeAccum += dt;
+    if (entry.remaining <= 0){
+      st.processing.splice(i,1);
+      finishProcessing(st, entry.unit);
+    }
+  }
+  // pull queued units into free capacity slots
+  while (st.processing.length < st.capacity && st.queue.length > 0){
+    const unit = st.queue.shift();
+    const baseTime = st.processingTime * procMult;
+    st.processing.push({ unit, remaining: baseTime, duration: baseTime });
+    unit.Status = (st.type === StationType.REPAIR) ? 'Repairing' : 'Processing';
+    unit.CurrentStation = st.id;
+    updateUnitVisual(unit);
+  }
+}
+
+function finishProcessing(st, unit){
+  const rule = routingConfig[st.id];
+  let destId = null;
+
+  if (st.type === StationType.INSPECTION){
+    const failRoll = Math.random() * 100 < (st.failRate || 0);
+    if (failRoll){
+      unit.Result = 'Failed';
+      unit.Status = 'Failed';
+      destId = rule.fail;
+      kpi.failQty++;
+    } else {
+      unit.Result = 'Passed';
+      unit.Status = 'Passed';
+      destId = rule.pass;
+      kpi.passQty++;
+    }
+  } else if (st.type === StationType.REPAIR){
+    unit.repaired = true;
+    kpi.repairCount++;
+    destId = (typeof rule === 'string') ? rule : (rule ? rule.pass : null);
+  } else if (typeof rule === 'string'){
+    destId = rule;
+  } else if (rule && rule.pass){
+    destId = rule.pass;
+  }
+
+  if (!destId){
+    // no further routing -> treat as completed (shouldn't normally happen except Finished)
+    completeUnit(unit);
+    return;
+  }
+  attemptMove(st, unit, destId);
+}
+
+function attemptMove(sourceSt, unit, destId){
+  if (destId === 'Finished'){
+    unit.Status = 'Moving';
+    updateUnitVisual(unit);
+    moveUnitTo(unit, 'Finished', () => completeUnit(unit));
+    return;
+  }
+  const destSt = stationMap[destId];
+  const destOccupancy = destSt.queue.length + destSt.processing.length;
+  if (destOccupancy < destSt.queueLimit + destSt.capacity){
+    unit.Status = 'Moving';
+    updateUnitVisual(unit);
+    moveUnitTo(unit, destId, () => {
+      destSt.queue.push(unit);
+      unit.CurrentStation = destId;
+      unit.Status = 'Waiting';
+      updateUnitVisual(unit);
+    });
+  } else {
+    // downstream full: hold in a blocked buffer at the source station
+    sourceSt.blocked.push({ unit, destId });
+  }
+}
+
+function retryBlocked(st){
+  for (let i = st.blocked.length - 1; i >= 0; i--){
+    const item = st.blocked[i];
+    const destSt = destOf(item.destId);
+    if (item.destId === 'Finished' || (destSt.queue.length + destSt.processing.length) < destSt.queueLimit + destSt.capacity){
+      st.blocked.splice(i,1);
+      attemptMove(st, item.unit, item.destId);
+    }
+  }
+}
+function destOf(id){ return stationMap[id]; }
+
+function completeUnit(unit){
+  unit.Status = 'Completed';
+  kpi.totalOutput++;
+  outputTimestamps.push(simTimeSec);
+  updateUnitVisual(unit);
+  // remove visually after a short delay
+  setTimeout(() => {
+    if (unit.el && unit.el.parentNode) unit.el.parentNode.removeChild(unit.el);
+  }, 600);
+  allUnits = allUnits.filter(u => u.UnitID !== unit.UnitID);
+}
+
+/* =========================================================
+   4. ANIMATION ENGINE (unit movement across the floor)
+   ========================================================= */
+const floorEl = document.getElementById('floorInner');
+const unitLayer = document.getElementById('unitLayer');
+
+function getStationCenterPx(id){
+  const node = document.getElementById('station-' + id);
+  const floorRect = floorEl.getBoundingClientRect();
+  if (!node){
+    // Finished uses same coordinates as its station config even if node missing
+    const st = stationMap[id];
+    return { x: floorRect.width * (st.pos.x/100), y: floorRect.height * (st.pos.y/100) };
+  }
+  const r = node.getBoundingClientRect();
+  return { x: (r.left + r.right)/2 - floorRect.left, y: (r.top + r.bottom)/2 - floorRect.top };
+}
+
+function createUnitElement(unit){
+  const el = document.createElement('div');
+  el.className = 'unit-chip status-' + unit.Status;
+  el.title = `Unit #${unit.UnitID} (${unit.Model}) - ${unit.SerialNumber}`;
+  unitLayer.appendChild(el);
+  unit.el = el;
+}
+
+function positionUnitAtStation(unit, stationId, immediate){
+  const p = getStationCenterPx(stationId);
+  if (!unit.el) return;
+  if (immediate){
+    unit.el.style.transition = 'none';
+    unit.el.style.left = p.x + 'px';
+    unit.el.style.top = p.y + 'px';
+    // force reflow then restore transition
+    void unit.el.offsetWidth;
+    unit.el.style.transition = '';
+  } else {
+    unit.el.style.left = p.x + 'px';
+    unit.el.style.top = p.y + 'px';
+  }
+}
+
+function updateUnitVisual(unit){
+  if (!unit.el) return;
+  unit.el.className = 'unit-chip status-' + unit.Status;
+}
+
+function moveUnitTo(unit, destStationId, onArrive){
+  if (!unit.el) { onArrive && onArrive(); return; }
+  const dist = distanceBetween(unit.CurrentStation, destStationId);
+  const durationMs = Math.max(350, Math.min(1400, dist * 2.2)) / simSpeed;
+  unit.el.style.transitionDuration = (durationMs/1000) + 's';
+  const p = getStationCenterPx(destStationId);
+  // slight random jitter so overlapping units are visible as a cluster, not stacked exactly
+  const jitter = (Math.random()-0.5) * 10;
+  unit.el.style.left = (p.x + jitter) + 'px';
+  unit.el.style.top = (p.y + jitter) + 'px';
+  setTimeout(() => { onArrive && onArrive(); }, durationMs + 30);
+}
+
+function distanceBetween(aId, bId){
+  const a = getStationCenterPx(aId);
+  const b = getStationCenterPx(bId);
+  return Math.hypot(a.x-b.x, a.y-b.y);
+}
+
+/* -------- SVG flow arrows -------- */
+const svg = document.getElementById('flowSvg');
+function buildArrowDefs(){
+  svg.innerHTML = `
+    <defs>
+      <marker id="arrowNormal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker>
+      <marker id="arrowPass" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#22c55e"/></marker>
+      <marker id="arrowFail" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ef4444"/></marker>
+      <marker id="arrowRepair" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#f97316"/></marker>
+    </defs>`;
+}
+
+function edgesFromRouting(){
+  const edges = [];
+  Object.keys(routingConfig).forEach(from => {
+    const rule = routingConfig[from];
+    if (typeof rule === 'string'){
+      edges.push({ from, to: rule, kind: (stationMap[from] && stationMap[from].type===StationType.REPAIR) ? 'repair' : 'normal' });
+    } else if (rule && typeof rule === 'object'){
+      if (rule.pass) edges.push({ from, to: rule.pass, kind:'pass' });
+      if (rule.fail) edges.push({ from, to: rule.fail, kind:'fail' });
+    }
+  });
+  return edges;
+}
+
+function drawConnections(){
+  buildArrowDefs();
+  const edges = edgesFromRouting();
+  edges.forEach(edge => {
+    const a = getStationCenterPx(edge.from);
+    const b = getStationCenterPx(edge.to);
+    let d, marker, color, dash='', labelX, labelY;
+
+    if (edge.kind === 'fail'){ marker='arrowFail'; color='#ef4444'; dash='6,4'; }
+    else if (edge.kind === 'pass'){ marker='arrowPass'; color='#22c55e'; }
+    else if (edge.kind === 'repair'){ marker='arrowRepair'; color='#f97316'; dash='3,4'; }
+    else { marker='arrowNormal'; color='#64748b'; }
+
+    if (edge.kind === 'repair'){
+      // bow the return path out to the side so it never overlaps the fail path
+      const ctrlX = Math.max(a.x, b.x) + 70;
+      const ctrlY = (a.y + b.y) / 2;
+      d = `M ${a.x} ${a.y} Q ${ctrlX} ${ctrlY} ${b.x} ${b.y}`;
+      labelX = ctrlX - 8; labelY = ctrlY;
+    } else {
+      d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+      labelX = (a.x + b.x) / 2 + 6; labelY = (a.y + b.y) / 2 - 6;
+    }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', edge.kind === 'repair' ? '2.5' : '2');
+    path.setAttribute('fill', 'none');
+    if (dash) path.setAttribute('stroke-dasharray', dash);
+    path.setAttribute('marker-end', `url(#${marker})`);
+    svg.appendChild(path);
+
+    // label for pass/fail/repair branches
+    if (edge.kind === 'pass' || edge.kind === 'fail' || edge.kind === 'repair'){
+      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x', labelX);
+      label.setAttribute('y', labelY);
+      label.setAttribute('fill', color);
+      label.setAttribute('font-size', '10');
+      label.setAttribute('font-weight', '700');
+      label.textContent = edge.kind === 'repair' ? 'RE-INSPECT' : edge.kind.toUpperCase();
+      svg.appendChild(label);
+    }
+  });
+}
+
+/* =========================================================
+   5. STATION NODES (DOM creation + rendering)
+   ========================================================= */
+function buildStationNodes(){
+  stations.forEach(st => {
+    const node = document.createElement('div');
+    node.id = 'station-' + st.id;
+    node.className = 'station-node type-' + st.type;
+    node.style.left = st.pos.x + '%';
+    node.style.top = st.pos.y + '%';
+    node.innerHTML = `
+      <div class="st-head">
+        <span class="st-name">${st.name}</span>
+        <span class="st-type">${st.type}</span>
+      </div>
+      <div class="wip-dots" id="wip-${st.id}"></div>
+      <div class="st-rows">
+        <span>Queue: <b id="queueCount-${st.id}">0</b>${st.type===StationType.INSPECTION ? ' &nbsp; Fail: <b id="failRatePct-'+st.id+'">'+st.failRate+'%</b>' : ''}</span>
+        <span>Proc Time: <b>${st.processingTime}s</b> &nbsp; Cap: <b>${st.capacity}</b></span>
+        <span>Util: <b id="utilPct-${st.id}">0%</b></span>
+      </div>
+      <div class="util-bar"><div class="util-fill" id="utilFill-${st.id}" style="width:0%"></div></div>
+      <div class="queue-dots" id="queueDots-${st.id}"></div>
+    `;
+    floorEl.appendChild(node);
+    makeStationDraggable(node, st);
+  });
+}
+
+/* -------- drag-to-rearrange for station nodes -------- */
+function makeStationDraggable(node, st){
+  let dragging = false;
+  let grabDX = 0, grabDY = 0;
+
+  node.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    dragging = true;
+    node.classList.add('dragging');
+    node.setPointerCapture(e.pointerId);
+    const nodeRect = node.getBoundingClientRect();
+    grabDX = e.clientX - (nodeRect.left + nodeRect.width / 2);
+    grabDY = e.clientY - (nodeRect.top + nodeRect.height / 2);
+    e.preventDefault();
+  });
+
+  node.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const floorRect = floorEl.getBoundingClientRect();
+    const centerX = e.clientX - grabDX - floorRect.left;
+    const centerY = e.clientY - grabDY - floorRect.top;
+    let pctX = (centerX / floorRect.width) * 100;
+    let pctY = (centerY / floorRect.height) * 100;
+    pctX = Math.max(3, Math.min(97, pctX));
+    pctY = Math.max(6, Math.min(94, pctY));
+    st.pos.x = pctX;
+    st.pos.y = pctY;
+    node.style.left = pctX + '%';
+    node.style.top = pctY + '%';
+    drawConnections();
+    allUnits.forEach(u => { if (u.CurrentStation === st.id) positionUnitAtStation(u, st.id, true); });
+  });
+
+  function endDrag(e){
+    if (!dragging) return;
+    dragging = false;
+    node.classList.remove('dragging');
+    try{ node.releasePointerCapture(e.pointerId); }catch(err){ /* pointer already released */ }
+  }
+  node.addEventListener('pointerup', endDrag);
+  node.addEventListener('pointercancel', endDrag);
+}
+
+function renderStationCards(){
+  stations.forEach(st => {
+    const wipEl = document.getElementById('wip-' + st.id);
+    const queueCountEl = document.getElementById('queueCount-' + st.id);
+    const utilPctEl = document.getElementById('utilPct-' + st.id);
+    const utilFillEl = document.getElementById('utilFill-' + st.id);
+    const queueDotsEl = document.getElementById('queueDots-' + st.id);
+    if (!wipEl) return;
+
+    // wip slots
+    wipEl.innerHTML = '';
+    const capShown = Math.min(st.capacity, 8);
+    for (let i=0;i<capShown;i++){
+      const slot = document.createElement('div');
+      slot.className = 'wip-slot' + (i < st.processing.length ? ' filled' : '');
+      wipEl.appendChild(slot);
+    }
+
+    queueCountEl.textContent = st.queue.length + (st.blocked ? st.blocked.length : 0);
+
+    if (st.type === StationType.INSPECTION){
+      const failRatePctEl = document.getElementById('failRatePct-' + st.id);
+      if (failRatePctEl) failRatePctEl.textContent = st.failRate + '%';
+    }
+
+    const util = st.capacity > 0 ? Math.min(100, Math.round((st.processing.length / st.capacity) * 100)) : 0;
+    utilPctEl.textContent = util + '%';
+    utilFillEl.style.width = util + '%';
+
+    queueDotsEl.innerHTML = '';
+    const showN = Math.min(st.queue.length, 10);
+    for (let i=0;i<showN;i++){
+      const d = document.createElement('div');
+      d.className = 'dot';
+      queueDotsEl.appendChild(d);
+    }
+    if (st.queue.length > 10){
+      const more = document.createElement('span');
+      more.style.fontSize = '9px'; more.style.color = 'var(--muted)';
+      more.textContent = '+' + (st.queue.length - 10);
+      queueDotsEl.appendChild(more);
+    }
+  });
+}
+
+/* =========================================================
+   6. KPI DASHBOARD
+   ========================================================= */
+const kpiDefs = [
+  { key:'totalInput',  label:'Total Input' },
+  { key:'totalOutput', label:'Total Output' },
+  { key:'passQty',     label:'Pass Quantity' },
+  { key:'failQty',     label:'Fail Quantity' },
+  { key:'yield',       label:'Yield %' },
+  { key:'wip',         label:'WIP Count' },
+  { key:'throughput',  label:'Throughput / Hr' },
+  { key:'repairCount', label:'Repair Count' },
+  { key:'utilization', label:'Avg Station Util %' },
+];
+
+function buildKPICards(){
+  const row = document.getElementById('kpiRow');
+  row.innerHTML = kpiDefs.map(d => `
+    <div class="kpi-card">
+      <div class="kpi-label">${d.label}</div>
+      <div class="kpi-value" id="kpi-${d.key}">0</div>
+    </div>
+  `).join('');
+}
+
+function renderKPIs(){
+  const totalInspected = kpi.passQty + kpi.failQty;
+  const yieldPct = totalInspected > 0 ? Math.round((kpi.passQty/totalInspected)*100) : 0;
+  const wipCount = allUnits.length;
+  // throughput: outputs within the last simulated hour window (or extrapolate if <1hr elapsed)
+  const windowSec = Math.min(simTimeSec, 3600);
+  const recentOutputs = outputTimestamps.filter(t => t >= simTimeSec - 3600).length;
+  const throughputPerHr = windowSec > 0 ? Math.round(recentOutputs * (3600/Math.max(windowSec,1))) : 0;
+
+  const avgUtil = stations.length ? Math.round(
+    stations.reduce((sum,st)=> sum + (st.capacity>0 ? (st.processing.length/st.capacity) : 0), 0) / stations.length * 100
+  ) : 0;
+
+  setKPI('totalInput', kpi.totalInput);
+  setKPI('totalOutput', kpi.totalOutput);
+  setKPI('passQty', kpi.passQty);
+  setKPI('failQty', kpi.failQty);
+  setKPI('yield', yieldPct + '%');
+  setKPI('wip', wipCount);
+  setKPI('throughput', throughputPerHr);
+  setKPI('repairCount', kpi.repairCount);
+  setKPI('utilization', avgUtil + '%');
+}
+function setKPI(key, val){
+  const el = document.getElementById('kpi-' + key);
+  if (el) el.textContent = val;
+}
+
+/* =========================================================
+   7. CONTROL PANEL WIRING
+   ========================================================= */
+document.getElementById('btnStart').addEventListener('click', startSim);
+document.getElementById('btnPause').addEventListener('click', pauseSim);
+document.getElementById('btnResume').addEventListener('click', resumeSim);
+document.getElementById('btnReset').addEventListener('click', resetSim);
+
+document.getElementById('cfgArrival').addEventListener('input', (e)=>{
+  const v = parseFloat(e.target.value);
+  if (!isNaN(v) && v > 0) arrivalIntervalSec = v;
+});
+document.getElementById('cfgProcMult').addEventListener('input', (e)=>{
+  const v = parseFloat(e.target.value);
+  if (!isNaN(v) && v > 0) procMult = v;
+});
+
+function buildQuickRateButtons(){
+  const failWrap = document.getElementById('failRateButtons');
+  [0,5,10,15,20,50].forEach(rate => {
+    const btn = document.createElement('button');
+    btn.textContent = rate + '%';
+    if (rate === stationMap['Inspection'].failRate) btn.classList.add('active');
+    btn.addEventListener('click', ()=>{
+      stationMap['Inspection'].failRate = rate;
+      [...failWrap.children].forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      renderStationConfigPanel();
+      renderStationCards();
+    });
+    failWrap.appendChild(btn);
+  });
+
+  const speedWrap = document.getElementById('speedButtons');
+  [0.5,1,2,5].forEach(sp => {
+    const btn = document.createElement('button');
+    btn.textContent = sp + '×';
+    if (sp === simSpeed) btn.classList.add('active');
+    btn.addEventListener('click', ()=>{
+      simSpeed = sp;
+      [...speedWrap.children].forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    speedWrap.appendChild(btn);
+  });
+}
+
+/* =========================================================
+   8. STATION CONFIGURATION PANEL (editable, live)
+   ========================================================= */
+function renderStationConfigPanel(){
+  const panel = document.getElementById('stationConfigPanel');
+  panel.innerHTML = '';
+  stations.forEach(st => {
+    if (st.type === StationType.OUTPUT){
+      // Finished Goods is a pure sink: no processing step or capacity limit applies,
+      // so show a read-only informational card instead of a hidden gap.
+      const infoCard = document.createElement('div');
+      infoCard.className = 'sc-card';
+      infoCard.innerHTML = `
+        <div class="sc-title"><span>${st.name}</span><span class="sc-type">${st.type}</span></div>
+        <div style="color:var(--muted);font-size:11px;line-height:1.5;">
+          Final stage &mdash; units are counted as output the instant they arrive.
+          No processing time, capacity, or queue limit applies here.
+        </div>
+      `;
+      panel.appendChild(infoCard);
+      return;
+    }
+    const card = document.createElement('div');
+    card.className = 'sc-card';
+    const isSource = st.type === StationType.SOURCE;
+    card.innerHTML = `
+      <div class="sc-title"><span>${st.name}</span><span class="sc-type">${st.type}</span></div>
+      ${isSource ? `<div style="color:var(--muted);font-size:10px;margin-bottom:6px;">Arrival rate is set in the Control Panel above. Capacity/Queue Limit below cap how many units can buffer at the line entrance.</div>` : ''}
+      <div class="sc-grid">
+        ${!isSource ? `<label>Processing (s)
+          <input type="number" min="0.5" step="0.5" value="${st.processingTime}" data-field="processingTime" data-station="${st.id}">
+        </label>` : ''}
+        <label>Capacity
+          <input type="number" min="1" step="1" value="${st.capacity}" data-field="capacity" data-station="${st.id}">
+        </label>
+        <label>Queue Limit
+          <input type="number" min="1" step="1" value="${st.queueLimit}" data-field="queueLimit" data-station="${st.id}">
+        </label>
+        ${st.type===StationType.INSPECTION ? `<label>Fail Rate (%)
+          <input type="number" min="0" max="100" step="1" value="${st.failRate}" data-field="failRate" data-station="${st.id}">
+        </label>` : ''}
+      </div>
+    `;
+    panel.appendChild(card);
+  });
+
+  panel.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const field = e.target.dataset.field;
+      const stId = e.target.dataset.station;
+      const val = parseFloat(e.target.value);
+      if (isNaN(val)) return;
+      stationMap[stId][field] = val;
+      if (field === 'failRate') buildQuickRateButtonsRefreshHighlight();
+      renderStationCards();
+    });
+  });
+}
+function buildQuickRateButtonsRefreshHighlight(){
+  const failWrap = document.getElementById('failRateButtons');
+  const rate = stationMap['Inspection'].failRate;
+  [...failWrap.children].forEach(b => b.classList.toggle('active', parseInt(b.textContent) === rate));
+}
+
+/* =========================================================
+   9. LEGEND + CLOCK
+   ========================================================= */
+function buildLegend(){
+  const legend = document.getElementById('legendBar');
+  const items = [
+    ['Waiting','var(--blue)'], ['Processing','var(--yellow)'], ['Passed','var(--green)'],
+    ['Failed','var(--red)'], ['Repair','var(--orange)'], ['Completed','var(--gray)']
+  ];
+  legend.innerHTML = '<strong style="color:var(--text);">Status Legend:</strong>' + items.map(([label,color]) =>
+    `<span class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${label}</span>`
+  ).join('');
+}
+
+function updateClock(){
+  const h = String(Math.floor(simTimeSec/3600)).padStart(2,'0');
+  const m = String(Math.floor((simTimeSec%3600)/60)).padStart(2,'0');
+  const s = String(Math.floor(simTimeSec%60)).padStart(2,'0');
+  document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+}
+
+/* -------- overflow detection: reveal horizontal scrollbar/hint when the
+   factory floor content is wider than the visible viewport -------- */
+function checkFloorOverflow(){
+  const floorPanel = document.querySelector('.floor-panel');
+  const hasOverflow = floorEl.scrollWidth > floorEl.clientWidth + 1;
+  floorPanel.classList.toggle('has-overflow', hasOverflow);
+}
+
+/* =========================================================
+   10. INIT
+   ========================================================= */
+function init(){
+  buildStationNodes();
+  buildKPICards();
+  buildQuickRateButtons();
+  renderStationConfigPanel();
+  buildLegend();
+  drawConnections();
+  renderStationCards();
+  renderKPIs();
+  updateRunPill();
+  updateClock();
+  checkFloorOverflow();
+
+  window.addEventListener('resize', () => {
+    drawConnections();
+    allUnits.forEach(u => { if (u.CurrentStation) positionUnitAtStation(u, u.CurrentStation, true); });
+    checkFloorOverflow();
+  });
+
+  if (window.ResizeObserver){
+    new ResizeObserver(checkFloorOverflow).observe(document.getElementById('factoryFloor'));
+  }
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>
